@@ -1,4 +1,5 @@
 import os
+from decouple import config
 
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 
@@ -63,6 +64,8 @@ STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 STATIC_ROOT = os.path.join(BASE_DIR, 'static_root')
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+STRIPE_SECRET_KEY = config('STRIPE_SECRET_KEY')
+STRIPE_PUBLIC_KEY = config('STRIPE_PUBLISHABLE_KEY')
 
 # Auth
 AUTHENTICATION_BACKENDS = [

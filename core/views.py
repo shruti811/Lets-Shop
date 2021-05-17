@@ -4,10 +4,88 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import ListView, DetailView, View
 from django.shortcuts import redirect
-from .models import Item, Order, OrderItem, BillingAddress
+from .models import Item, Order, OrderItem, BillingAddress, Payment
 from django.utils import timezone
 from django.contrib import messages
 from .forms import CheckoutForm
+from django.conf import settings
+
+import stripe
+stripe.api_key = settings.STRIPE_SECRET_KEY
+# stripe.api_key = "sk_test_4eC39HqLyjWDarjtT1zdp7dc"
+
+
+class PaymentView(LoginRequiredMixin, View):
+    def get(self, *args, **kwargs):
+        order = Order.objects.get(user=self.request.user, ordered=False)
+        context = {
+            'order': order,
+            'STRIPE_PUBLIC_KEY': settings.STRIPE_PUBLIC_KEY
+        }
+        return render(self.request, "payment.html", context)
+
+    def post(self, *args, **kwargs):
+        order = Order.objects.get(user=self.request.user, ordered=False)
+        token = self.request.POST.get('stripeToken')
+        amount = int(order.get_total() * 100)
+
+        try:
+            charge = stripe.Charge.create(
+                amount=amount,
+                currency="usd",
+                source=token
+            )
+
+            payment = Payment()
+            payment.stripe_charge_id = charge['id']
+            payment.user = self.request.user
+            payment.amount = order.get_total()
+            payment.save()
+
+            order.ordered = True
+            order.payment = payment
+            order.save()
+
+            messages.success(self.request, "Payment successful")
+            return redirect("/")
+
+        except stripe.error.CardError as e:
+            body = e.json_body
+            err = body.get('error', {})
+            messages.error(self.request, f"{err.get('message')}")
+            return redirect("/")
+
+        except stripe.error.RateLimitError as e:
+            # Too many requests made to the API too quickly
+            messages.error(self.request, "RateLimitError")
+            return redirect("/")
+
+        except stripe.error.InvalidRequestError as e:
+            # Invalid parameters were supplied to Stripe's API
+            messages.error(self.request, 'InvalidRequestError')
+            return redirect("/")
+
+        except stripe.error.AuthenticationError as e:
+            # Authentication with Stripe's API failed
+            # (maybe you changed API keys recently)
+            messages.error(self.request, 'AuthenticationError')
+            return redirect("/")
+
+        except stripe.error.APIConnectionError as e:
+            # Network communication with Stripe failed
+            messages.error(self.request, 'APIConnectionError')
+            return redirect("/")
+
+        except stripe.error.StripeError as e:
+            # Display a very generic error to the user, and maybe send
+            # yourself an email
+            messages.error(self.request, 'StripeError')
+            return redirect("/")
+
+        except Exception as e:
+            # Something else happened, completely unrelated to Stripe
+            messages.error(self.request, "A serious error occured")
+            return redirect("/")
 
 
 class CheckoutView(LoginRequiredMixin, View):
@@ -41,9 +119,14 @@ class CheckoutView(LoginRequiredMixin, View):
                 billing_address.save()
                 order.billing_address = billing_address
                 order.save()
-                return redirect('core:checkout')
-            messages.warning(self.request, "Failed checkout")
-            return redirect('core:checkout')
+
+                if payment_option == 'S':
+                    return redirect('core:payment', payment_option='stripe')
+                elif payment_option == 'P':
+                    return redirect('core:payment', payment_option='paypal')
+                else:
+                    messages.warning(self.request, "Payment option not selected")
+                    return redirect('core:checkout')
         except ObjectDoesNotExist:
             messages.error(self.request, "You don't have active order")
             return redirect('core:order-summary')
