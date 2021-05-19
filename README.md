@@ -1,1 +1,3 @@
+
 Shopping app using Django
+
