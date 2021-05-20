@@ -1,0 +1,3 @@
+
+Shopping app using Django
+
