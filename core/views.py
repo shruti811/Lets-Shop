@@ -29,18 +29,31 @@ class PaymentView(LoginRequiredMixin, View):
 
     def post(self, *args, **kwargs):
         order = Order.objects.get(user=self.request.user, ordered=False)
-        token = self.request.POST.get('stripeToken')
         amount = int(order.get_total() * 100)
-
         try:
-            charge = stripe.Charge.create(
-                amount=amount,
-                currency="usd",
-                source=token
+            YOUR_DOMAIN = "http://127.0.0.1:8000"
+            checkout_session = stripe.checkout.Session.create(
+                payment_method_types=['card'],
+                line_items=[
+                    {
+                        'price_data': {
+                            'currency': 'usd',
+                            'unit_amount': amount,
+                            'product_data': {
+                                'name': 'order'
+                            },
+                        },
+                        'quantity': 1,
+                    },
+                ],
+
+                mode='payment',
+                success_url=YOUR_DOMAIN + '/',
+                cancel_url=YOUR_DOMAIN + '/checkout/',
             )
 
             payment = Payment()
-            payment.stripe_charge_id = charge['id']
+            payment.stripe_charge_id = checkout_session.id
             payment.user = self.request.user
             payment.amount = order.get_total()
             payment.save()
@@ -57,43 +70,11 @@ class PaymentView(LoginRequiredMixin, View):
             messages.success(self.request, "Payment successful")
             return redirect("/")
 
-        except stripe.error.CardError as e:
+        except Exception as e:
             body = e.json_body
             err = body.get('error', {})
             messages.warning(self.request, f"{err.get('message')}")
-            return redirect("/")
-
-        except stripe.error.RateLimitError as e:
-            # Too many requests made to the API too quickly
-            messages.warning(self.request, "RateLimitError")
-            return redirect("/")
-
-        except stripe.error.InvalidRequestError as e:
-            # Invalid parameters were supplied to Stripe's API
-            messages.warning(self.request, 'InvalidRequestError')
-            return redirect("/")
-
-        except stripe.error.AuthenticationError as e:
-            # Authentication with Stripe's API failed
-            # (maybe you changed API keys recently)
-            messages.warning(self.request, 'AuthenticationError')
-            return redirect("/")
-
-        except stripe.error.APIConnectionError as e:
-            # Network communication with Stripe failed
-            messages.warning(self.request, 'APIConnectionError')
-            return redirect("/")
-
-        except stripe.error.StripeError as e:
-            # Display a very generic error to the user, and maybe send
-            # yourself an email
-            messages.warning(self.request, 'StripeError')
-            return redirect("/")
-
-        except Exception as e:
-            # Something else happened, completely unrelated to Stripe
-            messages.warning(self.request, "A serious error occured")
-            return redirect("/")
+            return redirect('core:checkout')
 
 
 class CheckoutView(LoginRequiredMixin, View):
@@ -140,7 +121,8 @@ class CheckoutView(LoginRequiredMixin, View):
                 elif payment_option == 'P':
                     return redirect('core:payment', payment_option='paypal')
                 else:
-                    messages.warning(self.request, "Payment option not selected")
+                    messages.warning(
+                        self.request, "Payment option not selected")
                     return redirect('core:checkout')
         except ObjectDoesNotExist:
             messages.warning(self.request, "You don't have active order")
@@ -268,7 +250,8 @@ class AddCouponView(View):
         if form.is_valid():
             try:
                 code = form.cleaned_data.get('code')
-                order = Order.objects.get(user=self.request.user, ordered=False)
+                order = Order.objects.get(
+                    user=self.request.user, ordered=False)
                 order.coupon = get_coupon(self.request, code)
                 order.save()
                 messages.info(self.request, "Coupon added successfully")
