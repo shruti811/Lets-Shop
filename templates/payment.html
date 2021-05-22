@@ -60,10 +60,6 @@ button:hover {
   margin-bottom: 5px;
 }
 
-/**
- * The CSS shown here will not be introduced in the Quickstart guide, but shows
- * how you can use CSS to style your Element's container.
- */
 .StripeElement {
   box-sizing: border-box;
 
@@ -122,6 +118,16 @@ button:hover {
               </div>
             {% endif %}
 
+            <div class="current-card-form">
+              <form action="." method="post" class="stripe-form">
+                  {% csrf_token %}
+                  <input type="hidden" name="use_default" value="true">
+                  <div class="stripe-form-row">
+                    <button id="checkout-button">Submit Payment</button>
+                  </div>
+                  <div id="card-errors" role="alert"></div>
+              </form>
+            </div>
 
             <div class="new-card-form">
               <form action="." method="post" class="stripe-form" id="stripe-form">
@@ -137,7 +143,7 @@ button:hover {
                   </div>
                   <div class="stripe-form-row">
                     <div class="custom-control custom-checkbox">
-                      <input type="checkbox" class="custom-control-input" name="save" id="save_card_info">
+                      <input type="checkbox" class="custom-control-input" name="save_card_info" id="save_card_info">
                       <label class="custom-control-label" for="save_card_info">Save for future purchases</label>
                     </div>
                   </div>
@@ -216,7 +222,67 @@ checkoutButton.addEventListener("click", function () {
       console.error("Error:", error);
     });
 });
-  
+
+var card = elements.create('card', {style: style});
+
+// Add an instance of the card Element into the `card-element` <div>.
+card.mount('#card-element');
+
+// Handle real-time validation errors from the card Element.
+card.addEventListener('change', function(event) {
+  var displayError = document.getElementById('card-errors');
+  if (event.error) {
+    displayError.textContent = event.error.message;
+  } else {
+    displayError.textContent = '';
+  }
+});
+  // Handle form submission.
+    var form = document.getElementById('stripe-form');
+  form.addEventListener('submit', function(event) {
+    event.preventDefault();
+
+    stripe.createToken(card).then(function(result) {
+      if (result.error) {
+        // Inform the user if there was an error.
+        var errorElement = document.getElementById('card-errors');
+        errorElement.textContent = result.error.message;
+      } else {
+        // Send the token to your server.
+        stripeTokenHandler(result.token);
+      }
+    });
+  });
+
+function stripeTokenHandler(token) {
+
+    // Insert the token ID into the form so it gets submitted to the server
+    var form = document.getElementById('stripe-form');
+    var hiddenInput = document.createElement('input');
+    hiddenInput.setAttribute('type', 'hidden');
+    hiddenInput.setAttribute('name', 'stripeToken');
+    hiddenInput.setAttribute('value', token.id);
+    form.appendChild(hiddenInput);
+
+    // Submit the form
+    form.submit();
+}
+
+var currentCardForm = $('.current-card-form');
+  var newCardForm = $('.new-card-form');
+  var use_default_card = document.querySelector("input[name=use_default_card]");
+  if (use_default_card != null)
+  {
+    use_default_card.addEventListener('change', function() {
+      if (this.checked) {
+        newCardForm.hide();
+        currentCardForm.show()
+      } else {
+        newCardForm.show();
+        currentCardForm.hide()
+      }
+    })
+}
 
 </script>
 

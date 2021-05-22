@@ -51,3 +51,9 @@ class RefundForm(forms.Form):
         'rows': 5
     }))
     email = forms.EmailField()
+
+
+class PaymentForm(forms.Form):
+    stripeToken = forms.CharField(required=False)
+    save_card_info = forms.BooleanField(required=False)
+    use_default_card = forms.BooleanField(required=False)
